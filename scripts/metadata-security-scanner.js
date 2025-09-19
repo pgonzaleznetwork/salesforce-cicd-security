@@ -63,6 +63,18 @@ async function main() {
         process.exit(0);
     }
 
+    // Verify OPA is installed and working
+    console.log('🔧 Verifying OPA installation...');
+    try {
+        const opaVersion = execSync('opa version', { encoding: 'utf8' });
+        console.log(`✅ OPA is available: ${opaVersion.trim()}`);
+    } catch (error) {
+        console.error('❌ OPA is not installed or not accessible!');
+        console.error('Please ensure OPA is installed and in PATH.');
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+    }
+
     // Run SGD to get changed files
     console.log('📊 Analyzing changed metadata with SFDX Git Delta...');
     const sgdOutput = 'sgd-output';
@@ -75,7 +87,7 @@ async function main() {
 
     try {
         execSync(
-            `sf sgd source delta --to "HEAD" --from "origin/${process.env.GITHUB_BASE_REF || 'main'}" --output "${sgdOutput}" --generate-delta`,
+            `sf sgd source delta --to "HEAD" --from "origin/${process.env.GITHUB_BASE_REF || 'main'}" --output-dir "${sgdOutput}" --generate-delta`,
             { stdio: 'inherit' }
         );
     } catch (error) {
@@ -168,12 +180,31 @@ async function main() {
                         { encoding: 'utf8' }
                     );
 
-                    const opaResult = JSON.parse(result);
+                    let opaResult;
+                    try {
+                        opaResult = JSON.parse(result);
+                    } catch (parseError) {
+                        console.error(
+                            `    ❌ Failed to parse OPA result: ${parseError.message}`
+                        );
+                        console.error(`    Raw OPA output: ${result}`);
+                        process.exit(1);
+                    }
+
                     const violations =
                         opaResult.result[0]?.expressions[0]?.value;
 
+                    if (!violations) {
+                        console.error(
+                            `    ❌ OPA returned unexpected result format`
+                        );
+                        console.error(
+                            `    Result: ${JSON.stringify(opaResult, null, 2)}`
+                        );
+                        process.exit(1);
+                    }
+
                     if (
-                        violations &&
                         violations.deny &&
                         Object.keys(violations.deny).length > 0
                     ) {
@@ -193,7 +224,6 @@ async function main() {
                     }
 
                     if (
-                        violations &&
                         violations.warn &&
                         Object.keys(violations.warn).length > 0
                     ) {
@@ -203,15 +233,28 @@ async function main() {
                         });
                     }
                 } catch (opaError) {
-                    console.log(
-                        `    ⚠️  Policy execution failed: ${opaError.message}`
+                    console.error(
+                        `    ❌ CRITICAL ERROR: OPA execution failed!`
                     );
+                    console.error(
+                        `    Command: opa eval --data "${policyFile}" --input "${jsonPath}" "data.salesforce.permissionsets"`
+                    );
+                    console.error(`    Error: ${opaError.message}`);
+                    console.error(
+                        `    This is a critical security scanner failure - cannot continue.`
+                    );
+                    process.exit(1);
                 }
             }
         } catch (conversionError) {
-            console.log(
-                `  ⚠️  Failed to convert ${filePath}: ${conversionError.message}`
+            console.error(
+                `  ❌ CRITICAL ERROR: Failed to convert ${filePath} to JSON`
             );
+            console.error(`  Error: ${conversionError.message}`);
+            console.error(
+                `  Cannot scan file for security violations - this is a critical failure.`
+            );
+            process.exit(1);
         }
 
         console.log('');
