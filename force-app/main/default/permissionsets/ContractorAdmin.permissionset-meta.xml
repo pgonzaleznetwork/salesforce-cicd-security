@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>Designed for system administrators who need comprehensive access to manage all organizational data and system configurations</description>
+    <description>Designed for System administrators who need comprehensive access to manage all organizational data and system configurations</description>
     <hasActivationRequired>false</hasActivationRequired>
     <label>View All Data Violation</label>
     <userPermissions>
