@@ -1,0 +1,64 @@
+name: Salesforce Metadata Security Scan
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'force-app/**'
+      - '.policies/**'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch enough history for SFDX Git Delta to work
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli
+          
+      - name: Install SFDX Git Delta
+        run: |
+          echo "y" | sf plugins install sfdx-git-delta
+          
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/v0.58.0/opa_linux_amd64_static
+          chmod 755 ./opa
+          sudo mv opa /usr/local/bin
+          
+      - name: Install dependencies
+        run: |
+          # Check if package.json exists (for xml2js converter)
+          if [ -f package.json ]; then
+            npm ci
+          else
+            npm init -y
+            npm install xml2js
+          fi
+          
+      - name: Make scanner script executable
+        run: chmod +x scripts/metadata-security-scanner.js
+          
+      - name: Run metadata security scan
+        run: node scripts/metadata-security-scanner.js
+        
+      - name: Upload scan results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: |
+            sgd-output/
+            temp-scan/
